@@ -1,6 +1,2 @@
 streamlit
 pandas
-sqlite3
-json
-datetime
-os
