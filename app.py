@@ -8,7 +8,6 @@ import os
 DB_NAME = "eventos.db"
 CIDADES_JSON = "cidades.json"
 
-
 # =============================================================================
 # FUNÇÕES DE BANCO DE DADOS E MANIPULAÇÃO
 # =============================================================================
@@ -44,7 +43,6 @@ def init_db():
         )
     """)
 
-    # Garante a existência da coluna 'segmento'
     cursor.execute("PRAGMA table_info(events)")
     colunas_existentes = [col[1] for col in cursor.fetchall()]
     if "segmento" not in colunas_existentes:
@@ -53,6 +51,22 @@ def init_db():
     conn.commit()
     conn.close()
 
+@st.cache_data
+def carregar_cidades():
+    """Lê o arquivo JSON e retorna uma lista de strings no formato "Cidade (UF)"."""
+    if not os.path.exists(CIDADES_JSON):
+        return []
+
+    with open(CIDADES_JSON, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    lista = raw["data"]
+    cidades_filtradas = []
+    for item in lista:
+        cid_nome = item["Nome"]
+        cid_uf = item["Uf"]
+        cidades_filtradas.append(f"{cid_nome} ({cid_uf})")
+    return sorted(cidades_filtradas)
 
 def register_user(username, password):
     """Registra um novo usuário no banco."""
@@ -71,11 +85,8 @@ def register_user(username, password):
     finally:
         conn.close()
 
-
 def login_user(username, password):
-    """
-    Tenta logar o usuário. Retorna (True, user_id) se ok, (False, None) caso falhe.
-    """
+    """Tenta logar o usuário."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute(
@@ -88,12 +99,9 @@ def login_user(username, password):
         return True, user[0]
     return False, None
 
-
-def insert_event(
-    user_id, nome_evento, local, cidade, estado,
-    data_inicio, data_fim, qtd_pessoas, descricao, categoria, segmento
-):
-    """Insere um novo evento no banco (table events)."""
+def insert_event(user_id, nome_evento, local, cidade, estado,
+                data_inicio, data_fim, qtd_pessoas, descricao, categoria, segmento):
+    """Insere um novo evento no banco."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
@@ -113,9 +121,8 @@ def insert_event(
     finally:
         conn.close()
 
-
 def fetch_events(user_id):
-    """Busca todos os eventos de um usuário específico (user_id) e retorna um DataFrame."""
+    """Busca todos os eventos de um usuário específico."""
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query(
         "SELECT * FROM events WHERE user_id = ?",
@@ -125,12 +132,9 @@ def fetch_events(user_id):
     conn.close()
     return df
 
-
-def update_event(
-    event_id, nome_evento, local, cidade, estado,
-    data_inicio, data_fim, qtd_pessoas, descricao, categoria, segmento
-):
-    """Atualiza dados de um evento existente no banco."""
+def update_event(event_id, nome_evento, local, cidade, estado,
+                data_inicio, data_fim, qtd_pessoas, descricao, categoria, segmento):
+    """Atualiza dados de um evento existente."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
@@ -159,28 +163,7 @@ def update_event(
     finally:
         conn.close()
 
-
-def carregar_cidades():
-    """
-    Lê o arquivo JSON e retorna uma lista de strings no formato "Cidade (UF)".
-    No selectbox do Streamlit, ao digitar parte do nome, o usuário filtra opções.
-    """
-    if not os.path.exists(CIDADES_JSON):
-        return []
-
-    with open(CIDADES_JSON, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-
-    lista = raw["data"]  # Supondo que o JSON tenha a chave "data"
-    cidades_filtradas = []
-    for item in lista:
-        cid_nome = item["Nome"]
-        cid_uf = item["Uf"]
-        cidades_filtradas.append(f"{cid_nome} ({cid_uf})")
-    return sorted(cidades_filtradas)
-
-
-# =============================================================================
+        # =============================================================================
 # APLICAÇÃO STREAMLIT
 # =============================================================================
 
@@ -188,7 +171,7 @@ def main():
     st.set_page_config(page_title="Eventos no Brasil", layout="wide")
     init_db()
 
-    # Variáveis de sessão:
+    # Variáveis de sessão
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user_id = None
@@ -204,27 +187,25 @@ def main():
         tab1, tab2 = st.tabs(["Login", "Registrar"])
         with tab1:
             st.subheader("Fazer Login")
-            login_username = st.text_input("Usuário")
-            login_password = st.text_input("Senha", type="password")
-            if st.button("Entrar"):
+            login_username = st.text_input("Usuário", key="login_user")
+            login_password = st.text_input("Senha", type="password", key="login_pass")
+            if st.button("Entrar", use_container_width=True):
                 ok, user_id = login_user(login_username, login_password)
                 if ok:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user_id
                     st.session_state.username = login_username
                     st.success(f"Bem-vindo(a), {login_username}!")
-
-                    # Substituimos set_query_params por experimental_set_query_params
-                    st.experimental_set_query_params(logged="true")
-                    st.stop()
+                    st.query_params.update({"logged": "true"})
+                    st.rerun()
                 else:
                     st.error("Usuário ou senha inválidos.")
 
         with tab2:
             st.subheader("Registrar Novo Usuário")
-            reg_username = st.text_input("Novo Usuário")
-            reg_password = st.text_input("Nova Senha", type="password")
-            if st.button("Registrar"):
+            reg_username = st.text_input("Novo Usuário", key="reg_user")
+            reg_password = st.text_input("Nova Senha", type="password", key="reg_pass")
+            if st.button("Registrar", use_container_width=True):
                 if reg_username and reg_password:
                     success, msg = register_user(reg_username, reg_password)
                     if success:
@@ -241,24 +222,23 @@ def main():
         with top1:
             st.write(f"Olá, **{st.session_state.username}**!")
         with top2:
-            if st.button("Sair"):
+            if st.button("Sair", use_container_width=True):
                 st.session_state.logged_in = False
                 st.session_state.user_id = None
                 st.session_state.username = None
                 st.session_state.edit_event_id = None
-                st.experimental_set_query_params()  # limpa parâmetros
-                st.stop()
+                st.query_params.clear()
+                st.rerun()
 
         st.title("MVP - Cadastro de Eventos e Feiras")
 
         # 1) FORMULÁRIO PARA CADASTRAR NOVO EVENTO
         st.header("Cadastrar Novo Evento")
-
         lista_cidades = carregar_cidades()
 
-        with st.form("form_evento"):
-            nome_evento = st.text_input("Nome do Evento", value="")
-            local = st.text_input("Local (endereço, p.ex.)", value="")
+        with st.form("form_evento", clear_on_submit=True):
+            nome_evento = st.text_input("Nome do Evento")
+            local = st.text_input("Local (endereço, p.ex.)")
 
             cidade_selecionada = st.selectbox(
                 "Cidade (digite para filtrar)",
@@ -267,34 +247,21 @@ def main():
             )
             data_inicio = st.date_input("Data de Início", value=None)
             data_fim = st.date_input("Data de Fim", value=None)
-
             qtd_pessoas = st.number_input("Quantidade Esperada de Pessoas", min_value=1, value=1)
-
             categoria = st.selectbox("Categoria", ["Selecione...", "Show", "Congresso", "Feira", "Workshop", "Outro"])
-            segmento = st.text_input("Segmento do Evento (ex: Tecnologia, Saúde, etc.)", value="")
-            descricao = st.text_area("Descrição do Evento", value="")
+            segmento = st.text_input("Segmento do Evento (ex: Tecnologia, Saúde, etc.)")
+            descricao = st.text_area("Descrição do Evento")
 
-            submit_cadastro = st.form_submit_button("Cadastrar Evento")
+            submit_cadastro = st.form_submit_button("Cadastrar Evento", use_container_width=True)
             if submit_cadastro:
-                # Validação simples:
-                if not nome_evento.strip():
-                    st.error("Preencha o Nome do Evento.")
-                elif not local.strip():
-                    st.error("Preencha o Local.")
-                elif cidade_selecionada == "Selecione...":
-                    st.error("Selecione a Cidade.")
-                elif data_inicio is None:
-                    st.error("Selecione a Data de Início.")
-                elif data_fim is None:
-                    st.error("Selecione a Data de Fim.")
-                elif categoria == "Selecione...":
-                    st.error("Selecione uma Categoria.")
-                elif not segmento.strip():
-                    st.error("Preencha o Segmento.")
-                elif not descricao.strip():
-                    st.error("Preencha a Descrição do Evento.")
+                if (not nome_evento.strip() or
+                    not local.strip() or
+                    cidade_selecionada == "Selecione..." or
+                    categoria == "Selecione..." or
+                    not segmento.strip() or
+                    not descricao.strip()):
+                    st.error("Preencha todos os campos obrigatórios.")
                 else:
-                    # Extrair cidade e uf
                     cid_nome, uf = "", ""
                     if "(" in cidade_selecionada and ")" in cidade_selecionada:
                         partes = cidade_selecionada.rsplit(" (", 1)
@@ -318,9 +285,11 @@ def main():
                             segmento=segmento.strip()
                         )
                         st.success("Evento cadastrado com sucesso!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao cadastrar evento: {e}")
 
+        # Continua na próxima parte...
         # 2) LISTAGEM E EDIÇÃO
         st.header("Meus Eventos Cadastrados")
 
@@ -337,6 +306,7 @@ def main():
             if row_to_edit.empty:
                 st.error("Evento não encontrado.")
                 st.session_state.edit_event_id = None
+                st.rerun()
             else:
                 row_to_edit = row_to_edit.iloc[0]
 
@@ -402,9 +372,8 @@ def main():
                     edit_segmento = st.text_input("Segmento", value=row_to_edit["segmento"] or "")
                     edit_descricao = st.text_area("Descrição do Evento", value=row_to_edit["descricao"] or "")
 
-                    salvar_alt = st.form_submit_button("Salvar Alterações")
+                    salvar_alt = st.form_submit_button("Salvar Alterações", use_container_width=True)
                     if salvar_alt:
-                        # Valida
                         if (not edit_nome_evento.strip() or
                             not edit_local.strip() or
                             edit_cidade_uf == "Selecione..." or
@@ -437,28 +406,25 @@ def main():
                                 )
                                 st.success("Evento atualizado com sucesso!")
                                 st.session_state.edit_event_id = None
-                                st.experimental_set_query_params()  # <--- Substituição
-                                st.stop()
+                                st.query_params.clear()
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"Erro ao atualizar evento: {e}")
 
-                # Botão “Cancelar Edição” (fora do form)
-                if st.button("Cancelar Edição"):
+                if st.button("Cancelar Edição", use_container_width=True):
                     st.session_state.edit_event_id = None
-                    st.experimental_set_query_params()  # <--- Substituição
-                    st.stop()
+                    st.query_params.clear()
+                    st.rerun()
 
         else:
             # Nenhum evento em edição -> Exibir a lista
             st.subheader("Lista de Eventos")
 
-            # Renomeia 'id' -> 'N° Evento'
             if "id" in events_df.columns:
                 events_df.rename(columns={"id": "N° Evento"}, inplace=True)
             if "user_id" in events_df.columns:
                 events_df.drop("user_id", axis=1, inplace=True)
 
-            # Cabeçalho manual
             cols_header = st.columns([1.3, 2.5, 2, 2, 1.2, 1.6, 1.6, 1.2, 2, 2, 3, 1])
             labels = [
                 "N° Evento", "Nome", "Local", "Cidade", "UF",
@@ -484,11 +450,10 @@ def main():
                 c10.write(row["segmento"])
                 c11.write(row["descricao"])
 
-                if c12.button("✏️", key=f"edit_{row['N° Evento']}"):
+                if c12.button("✏️", key=f"edit_{row['N° Evento']}", use_container_width=True):
                     st.session_state.edit_event_id = row["N° Evento"]
-                    # substituímos set_query_params por experimental_set_query_params
-                    st.experimental_set_query_params(edit=row["N° Evento"])
-                    st.stop()
+                    st.query_params.update({"edit": str(row["N° Evento"])})
+                    st.rerun()
 
 
 if __name__ == "__main__":
